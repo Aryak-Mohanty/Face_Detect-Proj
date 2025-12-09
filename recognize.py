@@ -1,91 +1,73 @@
-# =============================
-# REAL WORKING WEBCAM FOR COLAB
-# =============================
-from IPython.display import display, Javascript, Image
-from google.colab.output import eval_js
-from base64 import b64decode
 import cv2
 import numpy as np
 from keras.models import load_model
-import time
 
-# Load your cascade + model
-classifier = cv2.CascadeClassifier("/content/haarcascade_frontalface_default (1).xml")
-model = load_model("/content/final_model.h5")
+# Load Cascade Classifier
+# Assuming haarcascade is in the same directory or provide absolute path if needed
+classifier = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
 
-# ---- Start webcam ----
-js = Javascript("""
-async function startWebcam() {
-  const video = document.createElement('video');
-  video.setAttribute('autoplay', '');
-  video.setAttribute('playsinline', '');
-  document.body.appendChild(video);
+# Load Model
+model = load_model('final_model.h5')
 
-  const stream = await navigator.mediaDevices.getUserMedia({video: true});
-  video.srcObject = stream;
-
-  await new Promise(resolve => video.onloadedmetadata = resolve);
-  window.webcamVideo = video;
-}
-
-async function captureFrame() {
-  const video = window.webcamVideo;
-  if (!video) return "";
-
-  const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0);
-
-  return canvas.toDataURL('image/jpeg', 0.9);
-}
-
-startWebcam();
-""")
-display(js)
-
-
-# ======== FIXED PREPROCESS FUNCTION =========
-# Model expects 160x160x3 RGB
-def preprocess(img):
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)     # convert BGR → RGB
-    img = cv2.resize(img, (160, 160))              # FIXED SIZE
-    img = img.astype("float32") / 255.0            # normalize
-    img = img.reshape(1, 160, 160, 3)              # FIXED SHAPE
-    return img
-
+# Load Labels
+try:
+    labels = np.load("classes.npy")
+    print("Loaded labels from classes.npy:", labels)
+except:
+    print("classes.npy not found, using default labels.")
+    # Original labels from the user's project
+    labels = ["abhisikta", "adhinayak", "aryak", "raj", "biswabarenya", "ram","shayam", "smruti ranjan"]
 
 def get_pred_label(pred):
-    labels = ["abhisikta", "adhinayak", "aryak", "raj",
-              "biswabarenya", "ram", "shayam", "smruti ranjan"]
-    return labels[pred]
+    if pred >= 0 and pred < len(labels):
+        return labels[pred]
+    return f"Unknown ({pred})"
 
+def preprocess(img):
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    img = cv2.resize(img, (100, 100))
+    img = cv2.equalizeHist(img)
+    img = img.reshape(1, 100, 100, 1)
+    img = img / 255.0
+    return img
 
-# ======== MAIN LOOP (unchanged) =========
-print("Webcam streaming...")
+# Initialize Webcam
+cap = cv2.VideoCapture(0)
+
+if not cap.isOpened():
+    print("Error: Could not open webcam.")
+    exit()
 
 while True:
-    data = ""
-    while data == "":
-        data = eval_js("captureFrame()")
-        time.sleep(0.02)
-
-    img_bytes = b64decode(data.split(',')[1])
-    img_array = np.frombuffer(img_bytes, dtype=np.uint8)
-    frame = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-
-    faces = classifier.detectMultiScale(frame, 1.5, 5)
-
+    ret, frame = cap.read()
+    if not ret:
+        print("Failed to capture frame")
+        break
+    
+    faces = classifier.detectMultiScale(frame, 1.3, 5)
+      
     for x, y, w, h in faces:
         face = frame[y:y+h, x:x+w]
-        pred = np.argmax(model.predict(preprocess(face)))
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
+        
+        try:
+            pred = model.predict(preprocess(face), verbose=0)
+            label = get_pred_label(np.argmax(pred))
+            confidence = np.max(pred)
+            
+            label_text = f"{label} ({confidence:.2f})"
+            
+            cv2.putText(frame, label_text,
+                        (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                        (255, 0, 0), 2)
+        except Exception as e:
+            print(f"Prediction Error: {e}")
+        
+    cv2.imshow("Face Recognition", frame)
+    
+    if cv2.waitKey(1) == ord('q'):
+        break
 
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 5)
-        cv2.putText(frame, get_pred_label(pred), (x, y-10),
-                    cv2.FONT_HERSHEY_COMPLEX, 1, (255, 0, 0), 2)
+cap.release()
+cv2.destroyAllWindows()
 
-    _, jpeg = cv2.imencode('.jpg', frame)
-    display(Image(data=jpeg.tobytes()))
-
-    time.sleep(0.05)

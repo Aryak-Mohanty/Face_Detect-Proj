@@ -1,44 +1,63 @@
 import cv2
-import urllib
 import numpy as np
+import os
 
-classifier = cv2.CascadeClassifier(r"C:\Users\Aryak\Desktop\Face detect\Face detect\haarcascade_frontalface_default.xml")
+# Load Cascade Classifier
+classifier = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
 
-url = "http://100.88.40.147:8080/shot.jpg"
+# Initialize Webcam
+cap = cv2.VideoCapture(0)
 
+if not cap.isOpened():
+    print("Error: Could not open webcam.")
+    exit()
 
 data = []
+count = 0
+
+# Create images directory if it doesn't exist
+if not os.path.exists("images"):
+    os.makedirs("images")
+
+print("Enter label name after collecting data.")
+print("Press 'q' to stop early, or wait for 100 samples.")
 
 while len(data) < 100:
-    
-    
-    image_from_url = urllib.request.urlopen(url)
-    frame = np.array(bytearray(image_from_url.read()),np.uint8)
-    frame = cv2.imdecode(frame,-1)
-    
-    face_points = classifier.detectMultiScale(frame,1.3,5)
-    
-    if len(face_points)>0:
-        for x,y,w,h in face_points:
-            face_frame = frame[y:y+h+1,x:x+w+1]
-            cv2.imshow("Only face",face_frame)
-            if len(data)<=100:
-                print(len(data)+1,"/100")
-                data.append(face_frame)
-                break
-    cv2.putText(frame, str(len(data)),(100,100),cv2.FONT_HERSHEY_SIMPLEX,5,(0,0,255))
-    cv2.imshow("frame",frame)
-    if cv2.waitKey(30) == ord("q"):
+    ret, frame = cap.read()
+    if not ret:
+        print("Failed to capture frame")
         break
+    
+    faces = classifier.detectMultiScale(frame, 1.3, 5)
+    
+    if len(faces) > 0:
+        for x, y, w, h in faces:
+            # Crop face area
+            face_frame = frame[y:y+h, x:x+w]
+            cv2.imshow("Only face", face_frame)
+            
+            if len(data) < 100:
+                data.append(face_frame)
+                print(f"{len(data)}/100")
+                
+            # Draw rectangle on original frame
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
+            break # Only take one face per frame
+            
+    cv2.putText(frame, f"Count: {len(data)}", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+    cv2.imshow("frame", frame)
+    
+    if cv2.waitKey(1) == ord("q"):
+        break
+
+cap.release()
 cv2.destroyAllWindows()
         
-if len(data)== 100:
+if len(data) > 0:
     name = input("Enter Face holder name : ")
-    for i in range(100):
-        cv2.imwrite("images/"+name+"_"+str(i)+".jpg",data[i])
-    print("Done")
+    for i in range(len(data)):
+        cv2.imwrite(f"images/{name}_{i}.jpg", data[i])
+    print(f"Saved {len(data)} images for {name}")
 else:
-    print("need more data")
-        
-    
+    print("No data collected")
 
