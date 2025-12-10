@@ -261,6 +261,6 @@ If you rename the variables or folder, update them accordingly.
 
 <h2>📄 License – The Unlicense</h2>
 
-This project is released into the public domain under The Unlicense.You are free to copy, modify, distribute, or use the project for any purpose, without any conditions.
+This project is released into the public domain under The Unlicense. You are free to copy, modify, distribute, or use the project for any purpose, without any conditions.
 
 <hr>
